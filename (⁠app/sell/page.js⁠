@@ -1,0 +1,136 @@
+'use client';
+
+import { useState } from 'react';
+
+// 1. ดึงค่า Telegram Config จาก Environment Variables
+const TELEGRAM_BOT_TOKEN = process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID;
+
+export default function SellPage() {
+  // ตัวอย่าง State สินค้าสำหรับระบบ POS
+  const [product, setProduct] = useState({
+    name: 'สินค้าตัวอย่าง',
+    stock: 10, // สต็อกเริ่มต้น
+    price: 100,
+  });
+
+  const [quantity, setQuantity] = useState(1);
+
+  // 4. ฟังก์ชันส่ง Telegram Notification (ใช้ fetch ยิง API รูปแบบ async / try-catch)
+  const sendTelegramNotification = async (messageText) => {
+    try {
+      if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+        console.warn('Telegram Bot Token หรือ Chat ID ไม่ถูกตั้งค่า');
+        return;
+      }
+
+      const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: TELEGRAM_CHAT_ID,
+          text: messageText,
+          parse_mode: 'HTML',
+        }),
+      });
+
+      const data = await response.json();
+      if (!data.ok) {
+        console.error('ส่ง Telegram Notification ไม่สำเร็จ:', data.description);
+      }
+    } catch (error) {
+      // ใช้ try-catch เพื่อไม่ให้เกิดผลกระทบกับระบบหลักเมื่อการส่งแจ้งเตือนล้มเหลว
+      console.error('เกิดข้อผิดพลาดในการส่ง Telegram Notification:', error);
+    }
+  };
+
+  // ฟังก์ชันจัดการการขายสินค้า
+  const handleCheckout = async () => {
+    if (quantity <= 0 || quantity > product.stock) {
+      alert('จำนวนสินค้าไม่ถูกต้องหรือสต็อกไม่พอ');
+      return;
+    }
+
+    // คำนวณข้อมูลหลังตัดสต็อก
+    const updatedStock = product.stock - quantity;
+    const totalPrice = product.price * quantity;
+    const currentTime = new Date().toLocaleString('th-TH');
+
+    // อัปเดต สต็อกใน State
+    setProduct((prev) => ({
+      ...prev,
+      stock: updatedStock,
+    }));
+
+    // -------------------------------------------------------------
+    // 2. งานที่ 1: แจ้งเตือน Order เข้า (New Order Alert)
+    // -------------------------------------------------------------
+    const orderAlertMessage = 
+`🚨 <b>มีรายการขายใหม่!</b>
+- สินค้า: ${product.name}
+- จำนวน: ${quantity} ชิ้น
+- ราคารวม: ${totalPrice.toLocaleString()} บาท
+- สต็อกคงเหลือปัจจุบัน: ${updatedStock} ชิ้น
+- เวลา: ${currentTime}`;
+
+    // ส่งแจ้งเตือนออเดอร์ใหม่แบบไม่ขัดการทำงานของหน้าเว็บ
+    sendTelegramNotification(orderAlertMessage);
+
+    // -------------------------------------------------------------
+    // 3. งานที่ 2: แจ้งเตือน Stock เหลือ น้อย (Low Stock Alert)
+    // เกณฑ์: เหลือ <= 5 ชิ้น ให้ส่งแยกอีก 1 ข้อความ
+    // -------------------------------------------------------------
+    if (updatedStock <= 5) {
+      const lowStockAlertMessage = 
+`🚨 <b>[เตือนภัย] สต็อกสินค้าใกล้หมด!</b>
+- สินค้า: ${product.name}
+- คงเหลือเพียง: ${updatedStock} ชิ้น
+⚠️ กรุณาเติมสต็อกสินค้าด่วน!`;
+
+      sendTelegramNotification(lowStockAlertMessage);
+    }
+
+    alert('ขายสินค้าสำเร็จ!');
+  };
+
+  return (
+    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+      <h1>ระบบขายสินค้า (POS)</h1>
+      <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '8px', maxWidth: '400px' }}>
+        <h3>{product.name}</h3>
+        <p>ราคา: {product.price} บาท</p>
+        <p>สต็อกคงเหลือ: <strong>{product.stock}</strong> ชิ้น</p>
+        
+        <div style={{ margin: '10px 0' }}>
+          <label>จำนวนที่ต้องการซื้อ: </label>
+          <input
+            type="number"
+            min="1"
+            max={product.stock}
+            value={quantity}
+            onChange={(e) => setQuantity(Number(e.target.value))}
+            style={{ width: '60px', padding: '5px' }}
+          />
+        </div>
+
+        <button 
+          onClick={handleCheckout}
+          disabled={product.stock === 0}
+          style={{
+            padding: '10px 15px',
+            backgroundColor: product.stock === 0 ? '#ccc' : '#0070f3',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: product.stock === 0 ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {product.stock === 0 ? 'สินค้าหมด' : 'ยืนยันการขาย'}
+        </button>
+      </div>
+    </div>
+  );
+}
