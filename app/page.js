@@ -1,7 +1,6 @@
 'use client';
 
 import { supabase } from '@/lib/supabaseClient';
-';
 
 export default function HomePage() {
   // รายการสินค้าทั้งหมด
